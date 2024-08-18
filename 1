@@ -1,0 +1,90 @@
+# Gradient descent with one independent variable
+import pandas as pd
+import matplotlib.pyplot as plt
+import numpy as np
+from sklearn.preprocessing import RobustScaler
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import mean_squared_error, r2_score
+
+
+# Load the dataset
+df = pd.read_csv('/content/sample_data/california_housing_train.csv')
+
+# Scale the data using RobustScaler
+scaler = RobustScaler()
+df = pd.DataFrame(scaler.fit_transform(df), columns=df.columns)
+
+#removing outliers
+Q1 = df['median_house_value'].quantile(0.25)
+Q3 = df['median_house_value'].quantile(0.75)
+IQR = Q3 - Q1
+lowerbound = Q1 - 1.5*IQR
+upperbound = Q3 + 1.5*IQR
+df = df[(df['median_house_value'] >= lowerbound) & (df['median_house_value'] <= upperbound)]
+
+print(df.corr()["median_house_value"])
+
+# Define independent variables and the target variable
+X1 = df[["median_income"]].values  # Convert to numpy array
+Y = df[["median_house_value"]].values  # Convert to numpy array
+
+
+# Initialize coefficients
+x0 = 0
+x1 = 0
+
+# Learning rate and number of epochs
+L = 0.001
+epoch = 10000
+m = len(Y)  # Number of samples
+
+# Gradient Descent
+for i in range(epoch):
+    y_pred = x1 * X1 + x0  # Predicted values
+    D0 = (-2/m) * np.sum(Y - y_pred)  # Derivative with respect to x0
+    D1 = (-2/m) * np.sum((Y - y_pred) * X1)  # Derivative with respect to x1
+    x1 = x1 - L * D1  # Update x1
+    x0 = x0 - L * D0  # Update x0
+
+# Print the final coefficients
+print("x1:", x1)
+print("x0:", x0)
+
+test=pd.read_csv('/content/sample_data/california_housing_test.csv')
+# Scale the data using RobustScaler
+scaler = RobustScaler()
+test = pd.DataFrame(scaler.fit_transform(test), columns=test.columns)
+
+Q1 = test['median_house_value'].quantile(0.25)
+Q3 = test['median_house_value'].quantile(0.75)
+IQR = Q3 - Q1
+lowerbound = Q1 - 1.5*IQR
+upperbound = Q3 + 1.5*IQR
+test = test[(test['median_house_value'] >= lowerbound) & (test['median_house_value'] <= upperbound)]
+
+# Define independent variables and the target variable
+X1_test = test[["median_income"]].values  # Convert to numpy array
+Y_test = test[["median_house_value"]].values  # Convert to numpy array
+
+Y_pred = x1 * X1_test + x0  # Predicted values
+
+mse=mean_squared_error(Y_test, Y_pred)
+r2=r2_score(Y_test, Y_pred)
+print("MSE:", mse)
+print("R2:", r2)
+
+# Plot the regression line
+plt.scatter(X1, Y)
+plt.plot(X1, x1 * X1 + x0, color='red')
+plt.xlabel("Median Income")
+plt.ylabel("Median House Value")
+plt.show()
+
+# Interpreting the results:
+
+# MSE: Lower values of MSE indicate better model performance.
+# It represents the average squared difference between the predicted and actual values.
+
+# R-squared: This value ranges from 0 to 1, with higher values indicating a better fit.
+# It represents the proportion of variance in the target variable explained by the model.
+
