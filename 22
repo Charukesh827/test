@@ -1,0 +1,88 @@
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import accuracy_score , f1_score , recall_score , confusion_matrix
+
+def remove_outliers_iqr(df):
+    Q1 = df.quantile(0.25)
+    Q3 = df.quantile(0.75)
+    IQR = Q3 - Q1
+    outlier_condition = ((df < (Q1 - 1.5 * IQR)) | (df > (Q3 + 1.5 * IQR)))
+    df_cleaned = df[~outlier_condition.any(axis=1)]
+    return df_cleaned
+
+df = pd.read_csv('/content/DIABETICS DATASET.csv')
+df.dropna(inplace=True)
+df = remove_outliers_iqr(df)
+X = df.drop('Outcome', axis=1)
+y = df['Outcome']
+scaler = StandardScaler()
+X_scaled = scaler.fit_transform(X)
+
+def sigmoid(z):
+    return 1 / (1 + np.exp(-z))
+
+def compute_cost(X, y, theta):
+    m = len(y)
+    h = sigmoid(np.dot(X, theta))
+    epsilon = 1e-5
+    cost = (1/m) * (-y.T @ np.log(h + epsilon) - (1-y).T @ np.log(1-h + epsilon))
+    return cost
+
+def gradient_descent(X, y, theta, learning_rate, iterations):
+    m = len(y)
+    cost_history = []
+    for i in range(iterations):
+        gradient = (1/m) * np.dot(X.T, sigmoid(np.dot(X, theta)) - y)
+        theta = theta - learning_rate * gradient
+        cost = compute_cost(X, y, theta)
+        cost_history.append(cost)
+    return theta, cost_history
+
+X_scaled_intercept = np.c_[np.ones((X_scaled.shape[0], 1)), X_scaled]
+theta = np.zeros(X_scaled_intercept.shape[1])
+learning_rate = 0.01
+iterations = 1000
+
+theta, cost_history = gradient_descent(X_scaled_intercept, y, theta, learning_rate, iterations)
+
+plt.plot(range(1, iterations+1), cost_history)
+plt.xlabel("Iterations")
+plt.ylabel("Cost")
+plt.title("Cost Function Over Iterations")
+plt.show()
+
+def evaluate_model(X, y, theta):
+    predictions = sigmoid(np.dot(X, theta))
+    predictions = [1 if i >= 0.5 else 0 for i in predictions]
+    accuracy = accuracy_score(y, predictions)
+    f1 = f1_score(y, predictions)
+    recall = recall_score(y, predictions)
+    conf_matrix = confusion_matrix(y, predictions)
+    return accuracy, f1, recall , conf_matrix
+
+splits = [(0.7, 0.3), (0.6, 0.4), (0.8, 0.2)]
+for train_size, test_size in splits:
+    X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=test_size, random_state=42)
+    X_train_intercept = np.c_[np.ones((X_train.shape[0], 1)), X_train]
+    X_test_intercept = np.c_[np.ones((X_test.shape[0], 1)), X_test]
+
+    theta = np.zeros(X_train_intercept.shape[1])
+    theta, _ = gradient_descent(X_train_intercept, y_train, theta, learning_rate, iterations)
+    test_accuracy, test_f1, test_recall, test_conf_matrix = evaluate_model(X_test_intercept, y_test, theta)
+
+    print(f"Train size: {train_size}, Test size: {test_size}")
+    print(f"Test Accuracy: {test_accuracy:.2f}, Test F1 Score: {test_f1:.2f}, Test Recall: {test_recall:.2f}")
+    print("Test Confusion Matrix:")
+    print(test_conf_matrix)
+    print("\n")
+
+sns.pairplot(df, hue='Outcome')
+plt.show()
+
+plt.figure(figsize=(10, 6))
+sns.heatmap(df.corr(), annot=True, cmap='coolwarm')
+plt.show()
