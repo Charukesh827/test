@@ -1,0 +1,249 @@
+import numpy as np
+import matplotlib.pyplot as plt
+
+# Step 1: Define the membership functions (triangular)
+def triangular_membership(x, a, b, c):
+    """
+    Calculate the membership value for a triangular membership function.
+    a: left point, b: peak point, c: right point
+    """
+    if x <= a or x >= c:
+        return 0
+    elif a < x <= b:
+        return (x - a) / (b - a)
+    elif b < x < c:
+        return (c - x) / (c - b)
+    return 0
+
+# Step 2: Define membership functions for speed difference, acceleration, and throttle control
+def define_memberships():
+    # Speed difference membership functions (NL, NM, NS, ZE, PS, PM, PL)
+    speed_diff = {
+        'NL': [0, 0, 31, 61],
+        'NM': [31, 61, 95],
+        'NS': [61, 95, 127],
+        'ZE': [95, 127, 159],
+        'PS': [127, 159, 191],
+        'PM': [159, 191, 223],
+        'PL': [191, 223, 255, 255]
+    }
+    a
+    # Acceleration membership functions (NL, NM, NS, ZE, PS, PM, PL)
+    acceleration = {
+        'NL': [0, 0, 31, 61],
+        'NM': [31, 61, 95],
+        'NS': [61, 95, 127],
+        'ZE': [95, 127, 159],
+        'PS': [127, 159, 191],
+        'PM': [159, 191, 223],
+        'PL': [191, 223, 255, 255]
+    }
+    
+    # Throttle control membership functions (NL, NM, NS, ZE, PS, PM, PL)
+    throttle_control = {
+        'NL': [0, 0, 31, 61],
+        'NM': [31, 61, 95],
+        'NS': [61, 95, 127],
+        'ZE': [95, 127, 159],
+        'PS': [127, 159, 191],
+        'PM': [159, 191, 223],
+        'PL': [191, 223, 255, 255]
+    }
+    
+    return speed_diff, acceleration, throttle_control
+
+# Step 3: Fuzzify the inputs
+def fuzzify_inputs(speed_diff_value, accel_value, speed_diff, acceleration):
+    speed_membership = {}
+    accel_membership = {}
+    
+    # Fuzzify speed difference
+    for label, points in speed_diff.items():
+        if len(points) == 3:  # Triangular
+            speed_membership[label] = triangular_membership(speed_diff_value, points[0], points[1], points[2])
+        else:  # Trapezoidal
+            if speed_diff_value <= points[0] or speed_diff_value >= points[3]:
+                speed_membership[label] = 0
+            elif points[0] < speed_diff_value <= points[1]:
+                speed_membership[label] = (speed_diff_value - points[0]) / (points[1] - points[0])
+            elif points[1] < speed_diff_value <= points[2]:
+                speed_membership[label] = 1
+            elif points[2] < speed_diff_value < points[3]:
+                speed_membership[label] = (points[3] - speed_diff_value) / (points[3] - points[2])
+    
+    # Fuzzify acceleration
+    for label, points in acceleration.items():
+        if len(points) == 3:  # Triangular
+            accel_membership[label] = triangular_membership(accel_value, points[0], points[1], points[2])
+        else:  # Trapezoidal
+            if accel_value <= points[0] or accel_value >= points[3]:
+                accel_membership[label] = 0
+            elif points[0] < accel_value <= points[1]:
+                accel_membership[label] = (accel_value - points[0]) / (points[1] - points[0])
+            elif points[1] < accel_value <= points[2]:
+                accel_membership[label] = 1
+            elif points[2] < accel_value < points[3]:
+                accel_membership[label] = (points[3] - accel_value) / (points[3] - points[2])
+    
+    return speed_membership, accel_membership
+
+# Step 4: Apply fuzzy rules
+def apply_rules(speed_membership, accel_membership):
+    rules = [
+        (('NL', 'ZE'), 'PL'),  # Rule 1
+        (('ZE', 'NL'), 'PL'),  # Rule 2
+        (('NM', 'ZE'), 'PM'),  # Rule 3
+        (('NS', 'PS'), 'PS'),  # Rule 4
+        (('PS', 'NS'), 'PS'),  # Rule 5
+        (('PL', 'ZE'), 'NL'),  # Rule 6
+        (('ZE', 'NS'), 'PS'),  # Rule 7
+        (('ZE', 'NM'), 'PM')   # Rule 8
+    ]
+    
+    rule_outputs = {}
+    
+    for (speed_label, accel_label), throttle_label in rules:
+        # Use the minimum of the two membership values (AND operation)
+        strength = min(speed_membership[speed_label], accel_membership[accel_label])
+        if throttle_label not in rule_outputs:
+            rule_outputs[throttle_label] = strength
+        else:
+            rule_outputs[throttle_label] = max(rule_outputs[throttle_label], strength)  # OR operation for multiple rules
+    
+    return rule_outputs
+
+# Step 5: Defuzzify the output using the centroid method
+def defuzzify(rule_outputs, throttle_control):
+    x = np.linspace(0, 255, 1000)
+    aggregated = np.zeros_like(x, dtype=float)
+    
+    # Aggregate the output membership functions
+    for label, strength in rule_outputs.items():
+        points = throttle_control[label]
+        if len(points) == 3:  # Triangular
+            membership = np.array([triangular_membership(xi, points[0], points[1], points[2]) for xi in x])
+        else:  # Trapezoidal
+            membership = np.zeros_like(x, dtype=float)
+            for i, xi in enumerate(x):
+                if xi <= points[0] or xi >= points[3]:
+                    membership[i] = 0
+                elif points[0] < xi <= points[1]:
+                    membership[i] = (xi - points[0]) / (points[1] - points[0])
+                elif points[1] < xi <= points[2]:
+                    membership[i] = 1
+                elif points[2] < xi < points[3]:
+                    membership[i] = (points[3] - xi) / (points[3] - points[2])
+        
+        # Clip the membership function to the rule strength
+        membership = np.minimum(membership, strength)
+        aggregated = np.maximum(aggregated, membership)
+    
+    # Compute the centroid
+    if np.sum(aggregated) == 0:
+        return 0  # Avoid division by zero
+    centroid = np.sum(x * aggregated) / np.sum(aggregated)
+    return centroid
+
+# Step 6: Plot the membership functions
+def plot_memberships(speed_diff, acceleration, throttle_control):
+    x = np.linspace(0, 255, 1000)
+    
+    # Plot speed difference
+    plt.figure(figsize=(10, 6))
+    for label, points in speed_diff.items():
+        if len(points) == 3:  # Triangular
+            y = [triangular_membership(xi, points[0], points[1], points[2]) for xi in x]
+        else:  # Trapezoidal
+            y = np.zeros_like(x, dtype=float)
+            for i, xi in enumerate(x):
+                if xi <= points[0] or xi >= points[3]:
+                    y[i] = 0
+                elif points[0] < xi <= points[1]:
+                    y[i] = (xi - points[0]) / (points[1] - points[0])
+                elif points[1] < xi <= points[2]:
+                    y[i] = 1
+                elif points[2] < xi < points[3]:
+                    y[i] = (points[3] - xi) / (points[3] - points[2])
+        plt.plot(x, y, label=label)
+    plt.title("Speed Difference Membership Functions")
+    plt.xlabel("Normalized Speed Difference")
+    plt.ylabel("Degree of Membership")
+    plt.legend()
+    plt.grid()
+    plt.show()
+    
+    # Plot acceleration
+    plt.figure(figsize=(10, 6))
+    for label, points in acceleration.items():
+        if len(points) == 3:  # Triangular
+            y = [triangular_membership(xi, points[0], points[1], points[2]) for xi in x]
+        else:  # Trapezoidal
+            y = np.zeros_like(x, dtype=float)
+            for i, xi in enumerate(x):
+                if xi <= points[0] or xi >= points[3]:
+                    y[i] = 0
+                elif points[0] < xi <= points[1]:
+                    y[i] = (xi - points[0]) / (points[1] - points[0])
+                elif points[1] < xi <= points[2]:
+                    y[i] = 1
+                elif points[2] < xi < points[3]:
+                    y[i] = (points[3] - xi) / (points[3] - points[2])
+        plt.plot(x, y, label=label)
+    plt.title("Acceleration Membership Functions")
+    plt.xlabel("Normalized Acceleration")
+    plt.ylabel("Degree of Membership")
+    plt.legend()
+    plt.grid()
+    plt.show()
+    
+    # Plot throttle control
+    plt.figure(figsize=(10, 6))
+    for label, points in throttle_control.items():
+        if len(points) == 3:  # Triangular
+            y = [triangular_membership(xi, points[0], points[1], points[2]) for xi in x]
+        else:  # Trapezoidal
+            y = np.zeros_like(x, dtype=float)
+            for i, xi in enumerate(x):
+                if xi <= points[0] or xi >= points[3]:
+                    y[i] = 0
+                elif points[0] < xi <= points[1]:
+                    y[i] = (xi - points[0]) / (points[1] - points[0])
+                elif points[1] < xi <= points[2]:
+                    y[i] = 1
+                elif points[2] < xi < points[3]:
+                    y[i] = (points[3] - xi) / (points[3] - points[2])
+        plt.plot(x, y, label=label)
+    plt.title("Throttle Control Membership Functions")
+    plt.xlabel("Normalized Throttle Control")
+    plt.ylabel("Degree of Membership")
+    plt.legend()
+    plt.grid()
+    plt.show()
+
+# Main function to calculate throttle control
+def calculate_throttle_control(speed_diff_value, accel_value):
+    # Define membership functions
+    speed_diff, acceleration, throttle_control = define_memberships()
+    
+    # Plot the membership functions
+    plot_memberships(speed_diff, acceleration, throttle_control)
+    
+    # Fuzzify inputs
+    speed_membership, accel_membership = fuzzify_inputs(speed_diff_value, accel_value, speed_diff, acceleration)
+    print("Speed Difference Membership:", speed_membership)
+    print("Acceleration Membership:", accel_membership)
+    
+    # Apply fuzzy rules
+    rule_outputs = apply_rules(speed_membership, accel_membership)
+    print("Rule Outputs:", rule_outputs)
+    
+    # Defuzzify to get the final throttle control value
+    throttle_value = defuzzify(rule_outputs, throttle_control)
+    print(f"Calculated Throttle Control: {throttle_value:.2f}")
+    
+    return throttle_value
+
+# Example usage
+speed_diff_value = 100  # Given speed difference
+accel_value = 70        # Given acceleration
+throttle_value = calculate_throttle_control(speed_diff_value, accel_value)
